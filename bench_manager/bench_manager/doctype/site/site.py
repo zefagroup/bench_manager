@@ -212,7 +212,10 @@ def create_site(site_name, install_erpnext, mysql_password, admin_password, key)
 			app_list = f.read()
 		if 'erpnext' not in app_list:
 			commands.append("bench get-app erpnext")
+		if 'erpnext_rsa_payroll' not in app_list:
+			commands.append("bench get-app erpnext_rsa_payroll https://github.com/zefagroup/erpnext_rsa_payroll")
 		commands.append("bench --site {site_name} install-app erpnext".format(site_name=site_name))
+		commands.append("bench --site {site_name} install-app erpnext_rsa_payroll".format(site_name=site_name))
 	frappe.enqueue('bench_manager.bench_manager.utils.run_command',
 		commands=commands,
 		doctype="Bench Settings",
