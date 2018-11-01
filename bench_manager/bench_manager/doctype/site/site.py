@@ -207,7 +207,8 @@ def create_site(site_name, install_erpnext, mysql_password, admin_password, key)
 	verify_whitelisted_call()
 	commands = ["bench new-site --mariadb-root-password {mysql_password} --admin-password {admin_password} {site_name}".format(site_name=site_name,
 		admin_password=admin_password, mysql_password=mysql_password)]
-	commands.append("sudo -H bench setup lets-encrypt {site_name}".format(site_name=site_name))
+
+	 #commands.append("sudo -H bench setup lets-encrypt {site_name}".format(site_name=site_name))
 	if install_erpnext == "true":
 		with open('apps.txt', 'r') as f:
 			app_list = f.read()
@@ -227,9 +228,25 @@ def create_site(site_name, install_erpnext, mysql_password, admin_password, key)
 		time.sleep(2)
 		print("waiting for site creation...")
 		all_sites = safe_decode(check_output("ls")).strip('\n').split('\n')
+
 	doc = frappe.get_doc({'doctype': 'Site', 'site_name': site_name, 'app_list':'frappe', 'developer_flag':1})
 	doc.insert()
 	frappe.db.commit()
+
+@frappe.whitelist()
+def add_ssl(site_name, key, domain_name=None):
+    commands = []
+    if domain_name == None:
+        commands.append("sudo -H bench setup lets-encrypt {site_name}".format(site_name=site_name))
+    else:
+        commands.append(
+            "sudo -H bench setup lets-encrypt {site_name} --custom-domain {custom_domain}".format(site_name=site_name,
+                                                                                                  custom_domain=domain_name))
+    frappe.enqueue('bench_manager.bench_manager.utils.run_shell_command',
+                   commands=commands,
+                   doctype="Bench Settings",
+                   key=key
+                   )
 
 @frappe.whitelist()
 def install_app(site_name, app_name, key, app_path=None):
@@ -257,11 +274,10 @@ def install_app(site_name, app_name, key, app_path=None):
 def create_domain(site_name, domain_name, key):
 	commands = []
 	commands.append("bench setup add-domain {domain_name} --site {site_name}".format(domain_name=domain_name, site_name=site_name))
-	commands.append("sudo -H bench setup lets-encrypt {site_name} --custom-domain {custom_domain}".format(site_name=site_name, custom_domain=domain_name))
 	commands.append("bench setup nginx")
 	commands.append("sudo service nginx reload")
 
-	frappe.enqueue('bench_manager.bench_manager.utils.run_command',
+	frappe.enqueue('bench_manager.bench_manager.utils.run_shell_command',
 				   commands=commands,
 				   doctype="Bench Settings",
 				   key=key
