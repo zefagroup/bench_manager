@@ -5,7 +5,7 @@
 
 import frappe
 from frappe.model.document import Document
-from subprocess import check_output, Popen, PIPE
+from subprocess import check_output, Popen, PIPE, STDOUT
 import os, re, json, time, pymysql, shlex
 from bench_manager.bench_manager.utils import verify_whitelisted_call, safe_decode
 
@@ -207,15 +207,16 @@ def create_site(site_name, install_erpnext, mysql_password, admin_password, key)
 	verify_whitelisted_call()
 	commands = ["bench new-site --mariadb-root-password {mysql_password} --admin-password {admin_password} {site_name}".format(site_name=site_name,
 		admin_password=admin_password, mysql_password=mysql_password)]
+	commands.append("sudo -H bench setup lets-encrypt {site_name}".format(site_name=site_name))
 	if install_erpnext == "true":
 		with open('apps.txt', 'r') as f:
 			app_list = f.read()
 		if 'erpnext' not in app_list:
 			commands.append("bench get-app erpnext")
-		if 'erpnext_rsa_payroll' not in app_list:
-			commands.append("bench get-app erpnext_rsa_payroll https://github.com/zefagroup/erpnext_rsa_payroll")
+		#if 'erpnext_rsa_payroll' not in app_list:
+		#	commands.append("bench get-app erpnext_rsa_payroll https://github.com/zefagroup/erpnext_rsa_payroll")
 		commands.append("bench --site {site_name} install-app erpnext".format(site_name=site_name))
-		commands.append("bench --site {site_name} install-app erpnext_rsa_payroll".format(site_name=site_name))
+		#commands.append("bench --site {site_name} install-app erpnext_rsa_payroll".format(site_name=site_name))
 	frappe.enqueue('bench_manager.bench_manager.utils.run_command',
 		commands=commands,
 		doctype="Bench Settings",
@@ -229,3 +230,39 @@ def create_site(site_name, install_erpnext, mysql_password, admin_password, key)
 	doc = frappe.get_doc({'doctype': 'Site', 'site_name': site_name, 'app_list':'frappe', 'developer_flag':1})
 	doc.insert()
 	frappe.db.commit()
+
+@frappe.whitelist()
+def install_app(site_name, app_name, key, app_path=None):
+	verify_whitelisted_call()
+	commands = []
+	with open('apps.txt', 'r') as f:
+		app_list = f.read()
+	if app_name not in app_list:
+		if app_path:
+			commands.append("bench get-app {app_name} {app_path}".format(
+				app_name=app_name, app_path=app_path))
+		else:
+			commands.append("bench get-app {app_name}".format(app_name=app_name))
+
+	commands.append("bench --site {site_name} --install-app {app_name}".format(
+		site_name=site_name, app_name=app_name))
+
+	frappe.enqueue('bench_manager.bench_manager.utils.run_command',
+				   commands=commands,
+				   doctype="Bench Settings",
+				   key=key
+				   )
+
+@frappe.whitelist()
+def create_domain(site_name, domain_name, key):
+	commands = []
+	commands.append("bench setup add-domain {domain_name} --site {site_name}".format(domain_name=domain_name, site_name=site_name))
+	commands.append("sudo -H bench setup lets-encrypt {site_name} --custom-domain {custom_domain}".format(site_name=site_name, custom_domain=domain_name))
+	commands.append("bench setup nginx")
+	commands.append("sudo service nginx reload")
+
+	frappe.enqueue('bench_manager.bench_manager.utils.run_command',
+				   commands=commands,
+				   doctype="Bench Settings",
+				   key=key
+				   )
